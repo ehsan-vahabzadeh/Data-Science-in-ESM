@@ -1,10 +1,8 @@
 import numpy as np
-import os
 import matplotlib
 import cartopy
 import cartopy.crs as ccrs  
-os.environ.setdefault('QT_QPA_PLATFORM', 'wayland')
-matplotlib.use('QtAgg')
+matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import pandas as pd
