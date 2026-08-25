@@ -25,9 +25,9 @@ from requests.exceptions import HTTPError
 
 # A one-year interval containing the day that we want to map.  ERA5 times are
 # UTC.  The final 00:00 timestamp is needed for the final hour of solar data.
-DATA_START = "2026-01-01 00:00"
-DATA_END = "2026-01-03 00:00"
-MAP_DAY = "2026-01-01"
+DATA_START = "2026-07-01 00:00"
+DATA_END = "2026-07-03 00:00"
+MAP_DAY = "2026-07-01"
 
 # A longitude/latitude box around the UK, with a small sea buffer.  ERA5 and
 # atlite use x for longitude and y for latitude.
@@ -36,7 +36,7 @@ UK_BOUNDS = {
     "y": slice(49.5, 61.25),
 }
 
-CUTOUT_PATH = Path("uk-era5-2026-01-01-to-2026-01-03.nc")
+CUTOUT_PATH = Path("uk-era5-2026-07-01-to-2026-07-03.nc")
 OUTPUT_PATH = Path(f"uk-weather-daily-mean-{MAP_DAY}.png")
 
 # ERA5 has coordinates but does not attach city names to grid cells.  These
