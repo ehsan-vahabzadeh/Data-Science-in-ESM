@@ -1,0 +1,15 @@
+{
+  "valid_day": "2026-08-20",
+  "forecast_initialization_utc": "2026-08-19 12:00:00",
+  "selected_times_utc": [
+    "2026-08-20 00:00:00",
+    "2026-08-20 12:00:00"
+  ],
+  "wind_timing": "instantaneous at valid_time",
+  "solar_timing": "three-hour mean interval starting at valid_time",
+  "relative_error": "100 * (IFS - ERA5T) / ERA5T",
+  "relative_error_thresholds": {
+    "wind": 0.5,
+    "solar": 10.0
+  }
+}
