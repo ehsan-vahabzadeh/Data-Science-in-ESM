@@ -16,7 +16,7 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY requirements.txt requirements.lock ./
+COPY docker/requirements.txt docker/requirements.lock ./
 RUN --mount=type=cache,target=/root/.cache/pip \
     PIP_CACHE_DIR=/root/.cache/pip python -m pip install -r requirements.lock -r requirements.txt \
     && python -m pip check \

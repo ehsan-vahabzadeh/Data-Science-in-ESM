@@ -101,7 +101,8 @@ masts, lidar, offshore buoys, or wind-farm SCADA where available.
 
 The August 2026 worked case needs the forecast GRIB files cached locally:
 ECMWF Open Data retains only the most recent 12 forecast runs. For a new
-comparison, use the `verify` Compose command in [README.md](README.md) to
+comparison, use the `verify` Compose command in
+[docker/README.md](docker/README.md) to
 cache a recent run, then rerun it with the same valid day after ERA5T appears.
 
 ```bash

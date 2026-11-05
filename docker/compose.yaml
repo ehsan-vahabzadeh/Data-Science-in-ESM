@@ -1,17 +1,19 @@
+name: data-science-in-esm-weather
+
 x-weather: &weather
   image: data-science-in-esm-weather:local
   working_dir: /app
   volumes:
-    - ./data:/app/data
-    - ./outputs:/app/outputs
+    - ../data:/app/data
+    - ../outputs:/app/outputs
   init: true
 
 services:
   era5:
     <<: *weather
     volumes:
-      - ./data:/app/data
-      - ./outputs:/app/outputs
+      - ../data:/app/data
+      - ../outputs:/app/outputs
       - type: bind
         source: ${HOME}/.cdsapirc
         target: /home/weather/.cdsapirc
@@ -28,7 +30,9 @@ services:
 
   ml:
     <<: *weather
-    build: .
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     command:
       - python
       - UKDayAheadWeatherML.py
@@ -40,8 +44,8 @@ services:
   verify:
     <<: *weather
     volumes:
-      - ./data:/app/data
-      - ./outputs:/app/outputs
+      - ../data:/app/data
+      - ../outputs:/app/outputs
       - type: bind
         source: ${HOME}/.cdsapirc
         target: /home/weather/.cdsapirc

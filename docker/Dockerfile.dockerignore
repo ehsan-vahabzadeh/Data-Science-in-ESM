@@ -1,8 +1,9 @@
 # Send only the runtime files the Dockerfile copies.
 *
-!Dockerfile
-!requirements.txt
-!requirements.lock
+!docker/
+!docker/Dockerfile
+!docker/requirements.txt
+!docker/requirements.lock
 !UKWeather.py
 !UKDayAheadWeatherML.py
 !ECMWFForecastVerification.py

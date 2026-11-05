@@ -2,6 +2,7 @@
 /data/
 /outputs/
 __pycache__/
+.vscode/
 .cdsapirc
 .env
 .env.*
