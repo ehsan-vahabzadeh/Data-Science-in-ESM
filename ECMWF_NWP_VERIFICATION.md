@@ -99,6 +99,11 @@ masts, lidar, offshore buoys, or wind-farm SCADA where available.
 
 ## Run it
 
+The August 2026 worked case needs the forecast GRIB files cached locally:
+ECMWF Open Data retains only the most recent 12 forecast runs. For a new
+comparison, use the `verify` Compose command in [README.md](README.md) to
+cache a recent run, then rerun it with the same valid day after ERA5T appears.
+
 ```bash
 python ECMWFForecastVerification.py
 ```
@@ -131,4 +136,3 @@ Official documentation:
 - [ECMWF Open Data](https://www.ecmwf.int/en/forecasts/datasets/open-data)
 - [ECMWF open-data Python client](https://github.com/ecmwf/ecmwf-opendata)
 - [Copernicus ERA5 hourly single levels](https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels)
-

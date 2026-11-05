@@ -1,2 +1,7 @@
 /ecmwf-data/
-
+/data/
+/outputs/
+__pycache__/
+.cdsapirc
+.env
+.env.*

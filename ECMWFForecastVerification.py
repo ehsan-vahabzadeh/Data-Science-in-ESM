@@ -49,7 +49,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--valid-day",
         default=DEFAULT_VALID_DAY,
-        help="UTC day being forecast, in YYYY-MM-DD format.",
+        help="UTC day being forecast, in YYYY-MM-DD format or 'today'.",
     )
     parser.add_argument(
         "--hours",
@@ -84,6 +84,12 @@ def parse_arguments() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--reference-dir",
+        type=Path,
+        default=Path("."),
+        help="Directory for the inferred one-day ERA5 NetCDF file.",
+    )
+    parser.add_argument(
         "--download-era5",
         action="store_true",
         help="If the reference is missing, try to retrieve it through atlite/CDS.",
@@ -104,10 +110,14 @@ def parse_arguments() -> argparse.Namespace:
 
 
 def as_day(value: str, option_name: str) -> pd.Timestamp:
+    if value == "today":
+        return pd.Timestamp.now(tz="UTC").tz_localize(None).normalize()
     try:
         timestamp = pd.Timestamp(value)
     except ValueError as error:
-        raise SystemExit(f"{option_name} must use YYYY-MM-DD format.") from error
+        raise SystemExit(
+            f"{option_name} must use YYYY-MM-DD format or 'today'."
+        ) from error
     if timestamp != timestamp.normalize():
         raise SystemExit(f"{option_name} must be a date without a time.")
     return timestamp
@@ -336,6 +346,7 @@ def download_era5_reference(path: Path, valid_day: pd.Timestamp) -> None:
     from requests.exceptions import HTTPError
 
     check_cds_credentials()
+    path.parent.mkdir(parents=True, exist_ok=True)
     next_day = valid_day + pd.Timedelta(days=1)
     cutout = atlite.Cutout(
         path=path,
@@ -703,8 +714,18 @@ def main() -> None:
         solar_intervals,
     )
 
-    reference_path = arguments.reference_cutout or default_reference_path(valid_day)
+    reference_path = arguments.reference_cutout or (
+        arguments.reference_dir / default_reference_path(valid_day)
+    )
     if not reference_path.exists() and arguments.download_era5:
+        now_utc = pd.Timestamp.now(tz="UTC").tz_localize(None)
+        if now_utc < valid_day + pd.Timedelta(days=5):
+            print(
+                "\nForecast files are cached, but ERA5T is normally published "
+                "about five days after the valid day. Rerun this command "
+                f"with --valid-day {valid_day.date()} once it is available."
+            )
+            return
         download_era5_reference(reference_path, valid_day)
     if not reference_path.exists():
         print(

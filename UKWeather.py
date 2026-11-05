@@ -8,6 +8,7 @@ Before running this script, configure ~/.cdsapirc and accept the ERA5 licence:
 https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels
 """
 
+import argparse
 from pathlib import Path
 
 import matplotlib
@@ -48,6 +49,24 @@ CITIES = {
     "Belfast": (-5.9301, 54.5973),
 }
 
+
+def parse_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--cutout",
+        type=Path,
+        default=CUTOUT_PATH,
+        help="Path for the downloaded one-year ERA5 NetCDF cutout.",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=OUTPUT_PATH,
+        help="Path for the daily-mean map PNG.",
+    )
+    return parser.parse_args()
+
+
 def check_cds_credentials() -> None:
     """Stop early when ~/.cdsapirc is absent or still contains a placeholder."""
     credentials_path = Path.home() / ".cdsapirc"
@@ -67,12 +86,13 @@ def check_cds_credentials() -> None:
         )
 
 
-def prepare_cutout() -> atlite.Cutout:
+def prepare_cutout(cutout_path: Path = CUTOUT_PATH) -> atlite.Cutout:
     """Create or reopen the UK cutout and download the requested ERA5 fields."""
     check_cds_credentials()
+    cutout_path.parent.mkdir(parents=True, exist_ok=True)
 
     cutout = atlite.Cutout(
-        path=CUTOUT_PATH,
+        path=cutout_path,
         module="era5",
         x=UK_BOUNDS["x"],
         y=UK_BOUNDS["y"],
@@ -168,7 +188,9 @@ def print_dataset_summary(
         )
 
 
-def plot_daily_maps(fields: dict[str, xr.DataArray]) -> None:
+def plot_daily_maps(
+    fields: dict[str, xr.DataArray], output_path: Path = OUTPUT_PATH
+) -> None:
     """Plot three daily-mean fields on longitude/latitude UK maps."""
     styles = {
         "100 m wind speed": ("viridis", "m s$^{-1}$"),
@@ -240,16 +262,18 @@ def plot_daily_maps(fields: dict[str, xr.DataArray]) -> None:
             )
 
     fig.suptitle(f"UK ERA5 daily means — {MAP_DAY} (UTC)", fontsize=16)
-    fig.savefig(OUTPUT_PATH, dpi=200, bbox_inches="tight")
-    print(f"\nSaved map to {OUTPUT_PATH.resolve()}")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    print(f"\nSaved map to {output_path.resolve()}")
     plt.close(fig)
 
 
 def main() -> None:
-    cutout = prepare_cutout()
+    arguments = parse_arguments()
+    cutout = prepare_cutout(arguments.cutout)
     fields = calculate_daily_means(cutout)
     print_dataset_summary(cutout, fields)
-    plot_daily_maps(fields)
+    plot_daily_maps(fields, arguments.output)
 
 
 if __name__ == "__main__":
