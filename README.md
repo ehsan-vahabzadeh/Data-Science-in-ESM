@@ -1,6 +1,6 @@
 # UK wind and solar forecast research
 
-This project explores whether simple machine learning can improve **UK day-ahead wind and solar weather forecasts**. The planned models will correct forecasts from ECMWF's IFS using ERA5 as a historical reference, with both datasets accessed through Open-Meteo. The long-term aim is to connect weather forecasts to renewable generation and, later, electricity-market questions.
+This project explores whether simple machine learning can improve **UK wind and solar weather forecasts**. The current experiment uses ECMWF IFS forecasts from TIGGE and plans to compare them with ERA5 as a historical reference. The long-term aim is to connect weather forecasts to renewable generation and, later, electricity-market questions.
 
 ## Project targets
 
@@ -8,8 +8,8 @@ This project explores whether simple machine learning can improve **UK day-ahead
 
 | Status | Target by the end of the project | Current position |
 | --- | --- | --- |
-| 🟢 | Establish a repeatable way to access and match IFS and ERA5 data | A pilot and a resumable hourly downloader exist and have been exercised on small samples. |
-| 🟡 | Build and audit a multi-year UK land and offshore wind/solar dataset | Six daily files had been saved at the last check on 9 November 2026; the full period is not yet collected or validated. |
+| 🟡 | Establish a repeatable way to access and match IFS and ERA5 data | An Open-Meteo pilot exists; the new TIGGE-to-ERA5 workflow has not yet been implemented or verified. |
+| 🟡 | Build and audit a multi-year UK land and offshore wind/solar dataset | Two one-year TIGGE jobs have been submitted; their data and the matching ERA5 reference are not yet verified. |
 | ⚪ | Train separate, understandable wind and solar correction models | Planned: compare uncorrected IFS, a mean-bias correction, then linear or Ridge models. No correction model has been trained. |
 | ⚪ | Test whether more complex models improve on the simple models | Planned: compare random forests or gradient-boosted trees using the same inputs and time splits. |
 | ⚪ | Verify performance and generalisation | Planned: chronological train/validation/test splits, seasonal and lead-time results, and separate onshore/offshore evaluation. |
@@ -18,7 +18,11 @@ This project explores whether simple machine learning can improve **UK day-ahead
 
 ## Current position
 
-The downloader matches **100 m wind speed** and **surface shortwave radiation** at hourly UTC timestamps. It uses the previous day's 12:00 UTC IFS run, with +12 to +35-hour forecast leads, and selects nearby grid cells separately for IFS and ERA5. The 0.5° sample grid contains 134 UK land and 431 offshore points within an approximate published UK maritime-area mask. It is a coarse sample, not every native model grid cell or a legal boundary.
+**TIGGE is the chosen source for the next experiment.** We requested two years of ECMWF ensemble control forecasts over a UK and surrounding-seas bounding box on a 0.5° grid, for the 12 UTC run at +12, +18, +24 and +30 hours. The requested fields are 10 m wind components, 2 m temperature, total cloud cover and surface net solar radiation. These six-hourly samples do not cover every hour, and the rectangle includes non-UK areas. They are not the former 100 m wind and downward solar design.
+
+As of 9 November 2026, the one-year jobs were running and accepted, respectively. A one-run sample was downloaded, but neither the two-year requests nor the sample's contents have been fully validated. ERA5 must still be acquired and matched. See the [data-access history and current request](docs/data-access-history.md) for job IDs, decisions, limitations and next checks.
+
+The existing Open-Meteo downloader is a separate earlier workflow. It matches **100 m wind speed** and **surface shortwave radiation** at hourly UTC timestamps, using the previous day's 12:00 UTC IFS run at +12 to +35 hours. Its 0.5° sample grid contains 134 UK land and 431 offshore points within an approximate UK maritime-area mask; it is not every native model grid cell or a legal boundary. It does not download or process TIGGE.
 
 A daily macOS job was installed on this machine at 02:15 local time and processes up to five days per run, including incomplete-day retries. It needs the Mac on, connected, and the user logged in. Its output is local and ignored by Git. Check progress with:
 
@@ -32,16 +36,16 @@ Press Ctrl+C to stop watching the log; the download continues. Errors are in `da
 
 ## Data and scientific background
 
-- **IFS** is ECMWF's numerical weather prediction model: it issues forecasts before the weather occurs. Open-Meteo is the delivery service used here.
+- **IFS** is ECMWF's numerical weather prediction model: it issues forecasts before the weather occurs. TIGGE archives ensemble forecasts from multiple centres, including ECMWF; the current request uses ECMWF's control forecast.
 - **ERA5** is ECMWF's historical reanalysis, combining observations and modelling. It is a useful reference but is not an independent farm sensor or perfect ground truth.
 - An IFS forecast has an initialization time and a lead time, giving the **valid time** being forecast. The run's initialization is not necessarily its public availability time.
-- Wind is instantaneous at the timestamp. Open-Meteo's shortwave-radiation value is the mean over the **preceding hour**. Both sources must describe the same interval and use compatible units.
+- Wind components are forecast at a valid time. TIGGE net solar radiation is accumulated and differs from incoming downward solar radiation; compare like quantities over matching intervals and verify units and step metadata. Open-Meteo's earlier shortwave-radiation value is a preceding-hour mean.
 - IFS and ERA5 may select different grid centres. Their recorded distance is a source of uncertainty in the comparison.
 - Some historical IFS runs are described as hindcasts; their provenance and model-cycle changes need assessment before claiming an as-issued operational backtest.
 
 ## Proposed modelling approach
 
-Train two models, one for wind and one for solar, each predicting `ERA5 − IFS`. Add the predicted correction to the original IFS forecast. Start with the same forecast wind, forecast solar, lead time, cyclic time-of-day and time-of-year, location and land/sea inputs for each model. Fit all preprocessing on the training period only. Same-valid-time ERA5 is the **target**, never a predictor.
+Plan separate wind and solar models that predict `ERA5 − IFS`, then add the predicted correction to the forecast. Start with forecast wind, net solar radiation, cloud cover and temperature where available, plus lead time, cyclic time and location; a land/sea indicator still needs to be obtained and aligned. Wind speed is derived from the 10 m components. Establish a compatible solar target before modelling: net solar radiation is not the same as downward solar irradiance. Fit all preprocessing on the training period only. Same-valid-time ERA5 is the **target**, never a predictor.
 
 Compare MAE, RMSE and signed bias against the raw forecast. For solar report both daylight and all-hour scores. Test later dates and seasons without leaking future information; improving agreement with ERA5 alone does not establish improved real-world skill. The existing [forecast postprocessing research](docs/forecast-postprocessing-models.md) explains model options and published examples.
 
@@ -49,7 +53,7 @@ Compare MAE, RMSE and signed bias against the raw forecast. For solar report bot
 
 ## Run and test
 
-The pilot uses Python's standard library and needs internet access. The downloader also uses POSIX file locking, supported on macOS and Linux.
+These commands run the earlier Open-Meteo pilot and downloader, not the TIGGE experiment. The pilot uses Python's standard library and needs internet access. The downloader also uses POSIX file locking, supported on macOS and Linux.
 
 ```bash
 python3 OpenMeteoPilot.py
@@ -74,6 +78,7 @@ Tests use synthetic or mocked data and do not require network access. Live acces
 | [OpenMeteoPilot.py](OpenMeteoPilot.py) | Small IFS/ERA5 access and completeness pilot. |
 | [OpenMeteoMatch.py](OpenMeteoMatch.py) | Resumable forecast/reference downloader and matcher. |
 | [docs/open-meteo-dataset.md](docs/open-meteo-dataset.md) | Grid, timing, dataset provenance, download and schedule details. |
+| [docs/data-access-history.md](docs/data-access-history.md) | Data-source decisions, TIGGE requests, access setup and outstanding checks. |
 | [docs/open-meteo-pilot.md](docs/open-meteo-pilot.md) | Results and limitations of the two-site pilot. |
 | [docs/forecast-reference-matching.md](docs/forecast-reference-matching.md) | Forecast/reference matching research. |
 | [docs/forecast-correction-examples.md](docs/forecast-correction-examples.md) | Research examples of forecast correction. |
@@ -82,4 +87,4 @@ Tests use synthetic or mocked data and do not require network access. Live acces
 
 ## Decisions so far
 
-We first explored an ERA5-only ML forecast and direct IFS/ERA5 comparisons. We then selected Open-Meteo as the data source, chose the previous day's 12:00 UTC IFS run, opted for a 0.5° UK land and maritime-area sample, and decided to start with ERA5 as the reference. The model, multi-year dataset and independent-observation evaluation remain future work.
+We explored direct ECMWF archive access, Open-Meteo and NCAR before selecting TIGGE for the next experiment. TIGGE offers a historical ECMWF ensemble archive and longer lead times, with trade-offs in variables and six-hourly resolution. ERA5 remains the planned reference. The [data-access history](docs/data-access-history.md) records why the plan changed. The model, validated multi-year dataset and independent-observation evaluation remain future work.
