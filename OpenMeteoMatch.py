@@ -9,6 +9,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -52,6 +53,37 @@ def hourly(payload, day):
     return result
 
 
+def complete_values(payload, day):
+    return all(wind is not None and solar is not None for _, wind, solar in hourly(payload, day))
+
+
+def complete_output(path, points, day):
+    expected = {(str(day) + f'T{hour:02}:00Z', float(point['latitude']), float(point['longitude']))
+                for point in points for hour in range(24)}
+    try:
+        with path.open(newline='') as stream:
+            seen = set()
+            for row in csv.DictReader(stream):
+                key = (row['valid_time_utc'], float(row['requested_latitude']), float(row['requested_longitude']))
+                if key not in expected or key in seen:
+                    return False
+                if not all(math.isfinite(float(row[column])) for column in ('ifs_wind_ms', 'era5_wind_ms', 'wind_reference_minus_forecast_ms', 'ifs_solar_wm2', 'era5_solar_wm2', 'solar_reference_minus_forecast_wm2')):
+                    return False
+                seen.add(key)
+            return seen == expected
+    except (OSError, KeyError, TypeError, ValueError, csv.Error):
+        return False
+
+
+def preserve_incomplete(path):
+    backup_dir = path.parent / 'incomplete'
+    backup_dir.mkdir(exist_ok=True)
+    backup = backup_dir / f'{path.stem}.incomplete-{uuid.uuid4().hex}{path.suffix}'
+    with path.open('rb') as source, backup.open('xb') as destination:
+        shutil.copyfileobj(source, destination)
+    return backup
+
+
 def distance_km(a, b):
     lat1, lat2 = math.radians(a['latitude']), math.radians(b['latitude'])
     dlat = lat2 - lat1
@@ -81,7 +113,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--start-date', type=date.fromisoformat, default=date(2024, 3, 15), help='first valid day (default: 2024-03-15; first IFS run is March 14)')
     parser.add_argument('--end-date', type=date.fromisoformat, help='last valid day (default: seven days ago to allow ERA5 lag)')
-    parser.add_argument('--max-days', type=int, default=5, help='maximum new days per run (default: 5; repeat to resume)')
+    parser.add_argument('--max-days', type=int, default=5, help='maximum days to process per run, including incomplete retries (default: 5)')
     parser.add_argument('--output-dir', type=Path, default=Path('data/open-meteo-uk-eez'))
     args = parser.parse_args()
     if args.max_days < 1 or args.start_date < date(2024, 3, 15):
@@ -91,7 +123,7 @@ def main():
     end = args.end_date or datetime.now(timezone.utc).date() - timedelta(days=7)
     if end < args.start_date:
         raise SystemExit('No available dates in the requested range.')
-    print(f'Target valid days {args.start_date} to {end}; {len(points)} grid points; processing at most {args.max_days} new days.', flush=True)
+    print(f'Target valid days {args.start_date} to {end}; {len(points)} grid points; processing at most {args.max_days} days, including retries.', flush=True)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     with (args.output_dir / '.download.lock').open('a') as lock:
         try:
@@ -102,14 +134,29 @@ def main():
 
 
 def download(args, points, end):
+    # Rotate one incomplete-day retry per run, leaving capacity for new days.
+    status = {}
+    for path in args.output_dir.glob('matched-????-??-??.csv'):
+        try:
+            file_day = date.fromisoformat(path.stem[8:])
+        except ValueError:
+            continue
+        if args.start_date <= file_day <= end:
+            status[file_day] = complete_output(path, points, file_day)
+    incomplete = sorted(day for day, complete in status.items() if not complete)
+    cursor = args.output_dir / '.incomplete-retry-cursor'
+    last_retry = cursor.read_text().strip() if cursor.exists() else ''
+    retry_day = next((day for day in incomplete if str(day) > last_retry), incomplete[0] if incomplete else None)
     completed = 0
     day = args.start_date
     block_start = block_end = None
     while day <= end and completed < args.max_days:
         output = args.output_dir / f'matched-{day}.csv'
-        if output.exists():
+        if output.exists() and (status.get(day, False) or day != retry_day):
             day += timedelta(days=1)
             continue
+        if output.exists():
+            cursor.write_text(str(day) + '\n')
         if block_end is None or day > block_end:
             block_start = day
             block_end = min(day + timedelta(days=13), end)
@@ -126,7 +173,11 @@ def download(args, points, end):
         for label in existing:
             for cache in sorted(reused.glob(f'{label}-*.json')) if reused.exists() else []:
                 payload = json.loads(cache.read_text())
-                args_in_url = urllib.parse.parse_qs(urllib.parse.urlparse(payload['url']).query)
+                parsed_url = urllib.parse.urlparse(payload['url'])
+                expected_endpoint = FORECAST if label == 'ifs' else ARCHIVE
+                if f'{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}' != expected_endpoint:
+                    raise ValueError(f'Unexpected source endpoint in cached response {cache}')
+                args_in_url = urllib.parse.parse_qs(parsed_url.query)
                 expected_model = 'ecmwf_ifs' if label == 'ifs' else 'era5'
                 if args_in_url.get('models') != [expected_model] or args_in_url.get('hourly') != [','.join(VARIABLES)] or args_in_url.get('wind_speed_unit') != ['ms'] or args_in_url.get('timezone') != ['GMT'] or args_in_url.get('cell_selection') != ['nearest'] or any(v != 'nan' for v in args_in_url.get('elevation', [''])[0].split(',')):
                     raise ValueError(f'Unexpected settings in cached response {cache}')
@@ -140,8 +191,8 @@ def download(args, points, end):
                 if not len(lats) == len(lons) == len(values):
                     raise ValueError(f'Invalid cached location count in {cache}')
                 for lat, lon, value in zip(lats, lons, values):
-                    hourly(value, day)
-                    existing[label][(lat, lon)] = value
+                    if complete_values(value, day):
+                        existing[label][(lat, lon)] = value
         batches = []
         for start in range(0, len(points), 50):
             batch = points[start:start+50]
@@ -170,28 +221,52 @@ def download(args, points, end):
                         cache = raw_dir / f'{label}-{start:03}.json'
                     if cache.exists():
                         payload = json.loads(cache.read_text())
-                        stored = urllib.parse.parse_qs(urllib.parse.urlparse(payload['url']).query)
+                        parsed_url = urllib.parse.urlparse(payload['url'])
+                        if f'{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}' != endpoint:
+                            raise ValueError(f'Unexpected source endpoint in cached response {cache}')
+                        stored = urllib.parse.parse_qs(parsed_url.query)
                         stored_points = list(zip([float(x) for x in stored['latitude'][0].split(',')], [float(x) for x in stored['longitude'][0].split(',')]))
                         if stored_points != [(p['latitude'], p['longitude']) for p in missing] or any(stored.get(k) != [str(v)] for k, v in specific.items()) or stored.get('hourly') != [','.join(VARIABLES)] or stored.get('wind_speed_unit') != ['ms'] or stored.get('timezone') != ['GMT'] or stored.get('cell_selection') != ['nearest'] or stored.get('elevation') != [','.join('nan' for _ in missing)]:
                             raise ValueError(f'Cached request does not match the current grid and run: {cache}')
                     else:
+                        payload = None
+                    if payload is not None:
+                        cached_values = payload['data'] if isinstance(payload['data'], list) else [payload['data']]
+                        if len(cached_values) != len(missing) or not all(complete_values(value, day) for value in cached_values):
+                            payload = None
+                    if payload is None:
                         common = {'latitude': ','.join(str(p['latitude']) for p in missing), 'longitude': ','.join(str(p['longitude']) for p in missing), 'hourly': ','.join(VARIABLES), 'wind_speed_unit': 'ms', 'timezone': 'GMT', 'cell_selection': 'nearest', 'elevation': ','.join('nan' for _ in missing)}
                         print(f'{day}: {label} points {start+1}–{start+len(batch)} ({len(missing)} new) of {len(points)}', flush=True)
-                        payload = request(endpoint, common | specific)
-                        values = payload['data'] if isinstance(payload['data'], list) else [payload['data']]
-                        if len(values) != len(missing):
-                            raise ValueError('Unexpected number of API locations')
-                        checks = [hourly(value, day) for value in values]
-                        if label == 'era5':
+                        while True:
+                            payload = request(endpoint, common | specific)
+                            values = payload['data'] if isinstance(payload['data'], list) else [payload['data']]
+                            if len(values) != len(missing):
+                                raise ValueError('Unexpected number of API locations')
+                            for value in values:
+                                hourly(value, day)
+                                if label == 'ifs' and any(f'{day}T{hour:02}:00' not in value['hourly']['time'] for hour in range(24)):
+                                    raise ValueError(f'IFS response is missing required forecast hours for {day}; it was not cached.')
+                            if label != 'era5':
+                                break
                             first = date.fromisoformat(specific['start_date'])
                             last = date.fromisoformat(specific['end_date'])
-                            for offset in range((last - first).days + 1):
-                                target = first + timedelta(days=offset)
-                                if not any(w is not None and solar is not None for value in values for _, w, solar in hourly(value, target)):
-                                    raise SystemExit(f'ERA5 has no paired values for {target} in this batch yet. The block was not cached; retry with --end-date before {target}.')
+                            unavailable = next((first + timedelta(days=offset) for offset in range((last - first).days + 1)
+                                                if not any(w is not None and solar is not None for value in values
+                                                           for _, w, solar in hourly(value, first + timedelta(days=offset)))), None)
+                            if unavailable is None:
+                                break
+                            if unavailable <= day:
+                                raise SystemExit(f'ERA5 has no paired values for {unavailable} in this batch yet. No incomplete block was cached.')
+                            block_end = unavailable - timedelta(days=1)
+                            specific['end_date'] = str(block_end)
+                            block_dir.mkdir(parents=True, exist_ok=True)
+                            cache = block_dir / f"{specific['start_date']}_{specific['end_date']}_{start:03}.json"
+                            print(f'ERA5 unavailable from {unavailable}; retrying through {block_end}.', flush=True)
                         temp = cache.with_suffix('.part')
                         try:
                             temp.write_text(json.dumps(payload, allow_nan=False))
+                            if cache.exists():
+                                preserve_incomplete(cache)
                             temp.replace(cache)
                         finally:
                             temp.unlink(missing_ok=True)
@@ -208,6 +283,8 @@ def download(args, points, end):
                 writer = csv.DictWriter(f, fieldnames=list(batches[0]))
                 writer.writeheader()
                 writer.writerows(batches)
+            if output.exists():
+                preserve_incomplete(output)
             temp.replace(output)
         finally:
             temp.unlink(missing_ok=True)
@@ -216,7 +293,7 @@ def download(args, points, end):
         print(f'Saved {output}: {len(batches)} rows, matched wind {complete_wind}, solar {complete_solar}.', flush=True)
         completed += 1
         day += timedelta(days=1)
-    print(f'Finished {completed} new days. Repeat the same command to resume.', flush=True)
+    print(f'Processed {completed} days. Repeat the same command to resume or retry incomplete data.', flush=True)
 
 
 if __name__ == '__main__':

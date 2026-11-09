@@ -66,6 +66,84 @@ class MatchingTests(unittest.TestCase):
             self.assertEqual(rows[0]['valid_time_utc'], '2024-03-15T00:00Z')
             self.assertEqual(rows[-1]['valid_time_utc'], '2024-03-15T23:00Z')
 
+    def test_incomplete_daily_output_is_retried_without_losing_original(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            grid = base / 'grid.csv'
+            grid.write_text('latitude,longitude,region\n52.5,1.0,onshore\n')
+            output = base / 'out'
+            calls = []
+            def fake_request(endpoint, params):
+                calls.append(endpoint)
+                value = payload(52.5, 1)
+                if endpoint == match.ARCHIVE and calls.count(match.ARCHIVE) == 1:
+                    value['hourly']['shortwave_radiation'][0] = None
+                return {'url': endpoint + '?' + urllib.parse.urlencode(params), 'data': value}
+            args = ['OpenMeteoMatch.py', '--start-date', '2024-03-15', '--end-date', '2024-03-15', '--output-dir', str(output)]
+            with (patch.object(match, 'GRID', grid), patch.object(match, 'PREVIOUS_DATA', base / 'none'), patch.object(match, 'request', side_effect=fake_request), patch.object(sys, 'argv', args)):
+                match.main()
+                first = (output / 'matched-2024-03-15.csv').read_bytes()
+                match.main()
+            with (output / 'matched-2024-03-15.csv').open() as f:
+                rows = list(csv.DictReader(f))
+            self.assertEqual(len(rows), 24)
+            self.assertTrue(all(row['solar_reference_minus_forecast_wm2'] != '' for row in rows))
+            self.assertEqual(calls.count(match.ARCHIVE), 2)
+            self.assertTrue(any(path.read_bytes() == first for path in (output / 'incomplete').glob('matched-2024-03-15.incomplete-*.csv')))
+
+    def test_failed_retry_keeps_existing_output_and_cache(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            grid = base / 'grid.csv'
+            grid.write_text('latitude,longitude,region\n52.5,1.0,onshore\n')
+            output = base / 'out'
+            def first_request(endpoint, params):
+                value = payload(52.5, 1)
+                if endpoint == match.ARCHIVE:
+                    value['hourly']['shortwave_radiation'][0] = None
+                return {'url': endpoint + '?' + urllib.parse.urlencode(params), 'data': value}
+            args = ['OpenMeteoMatch.py', '--start-date', '2024-03-15', '--end-date', '2024-03-15', '--output-dir', str(output)]
+            with (patch.object(match, 'GRID', grid), patch.object(match, 'PREVIOUS_DATA', base / 'none'), patch.object(sys, 'argv', args)):
+                with patch.object(match, 'request', side_effect=first_request):
+                    match.main()
+                daily = output / 'matched-2024-03-15.csv'
+                cache = output / 'raw/2024-03-15/era5-000.json'
+                old_daily, old_cache = daily.read_bytes(), cache.read_bytes()
+                with patch.object(match, 'request', side_effect=RuntimeError('network unavailable')):
+                    with self.assertRaisesRegex(RuntimeError, 'network unavailable'):
+                        match.main()
+                self.assertEqual(daily.read_bytes(), old_daily)
+                self.assertEqual(cache.read_bytes(), old_cache)
+
+    def test_incomplete_retries_do_not_starve_new_days_and_rotate(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            grid = base / 'grid.csv'
+            grid.write_text('latitude,longitude,region\n52.5,1.0,onshore\n')
+            output = base / 'out'
+            output.mkdir()
+            for day in ('2024-03-15', '2024-03-16'):
+                (output / f'matched-{day}.csv').write_text('valid_time_utc,requested_latitude,requested_longitude,ifs_wind_ms\n')
+            def fake_request(endpoint, params):
+                value = payload(52.5, 1)
+                start = datetime(2024, 3, 15)
+                value['hourly'] = {'time': [(start + timedelta(hours=i)).strftime('%Y-%m-%dT%H:%M') for i in range(72)],
+                                   'wind_speed_100m': [4.0] * 72, 'shortwave_radiation': [100.0] * 72}
+                if endpoint == match.ARCHIVE:
+                    value['hourly']['shortwave_radiation'][0] = None
+                return {'url': endpoint + '?' + urllib.parse.urlencode(params), 'data': value}
+            args = ['OpenMeteoMatch.py', '--start-date', '2024-03-15', '--end-date', '2024-03-17', '--max-days', '2', '--output-dir', str(output)]
+            with (patch.object(match, 'GRID', grid), patch.object(match, 'PREVIOUS_DATA', base / 'none'), patch.object(match, 'request', side_effect=fake_request), patch.object(sys, 'argv', args)):
+                match.main()
+                self.assertTrue((output / 'matched-2024-03-17.csv').exists())
+                self.assertEqual((output / 'matched-2024-03-16.csv').read_text(), 'valid_time_utc,requested_latitude,requested_longitude,ifs_wind_ms\n')
+                match.main()
+            with (output / 'matched-2024-03-15.csv').open() as f:
+                self.assertTrue(any(not row['solar_reference_minus_forecast_wm2'] for row in csv.DictReader(f)))
+            with (output / 'matched-2024-03-16.csv').open() as f:
+                self.assertTrue(all(row['solar_reference_minus_forecast_wm2'] for row in csv.DictReader(f)))
+            self.assertTrue((output / 'matched-2024-03-17.csv').exists())
+
     def test_multi_day_era5_block_is_reused_after_interruption(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
@@ -121,7 +199,7 @@ class MatchingTests(unittest.TestCase):
             self.assertTrue((output / 'matched-2024-03-15.csv').exists())
             self.assertTrue((output / 'matched-2024-03-16.csv').exists())
 
-    def test_incomplete_latest_era5_day_does_not_cache_a_block(self):
+    def test_available_day_is_saved_when_later_era5_day_is_unavailable(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
             grid = base / 'grid.csv'
@@ -129,18 +207,17 @@ class MatchingTests(unittest.TestCase):
             output = base / 'out'
             def fake_request(endpoint, params):
                 value = payload(52.5, 1)
-                if endpoint == match.ARCHIVE:
+                if endpoint == match.ARCHIVE and params['end_date'] == '2024-03-16':
                     start = datetime(2024, 3, 15)
                     value['hourly'] = {'time': [(start + timedelta(hours=i)).strftime('%Y-%m-%dT%H:%M') for i in range(48)],
                                        'wind_speed_100m': [4.0] * 24 + [None] * 24,
                                        'shortwave_radiation': [100.0] * 24 + [None] * 24}
                 return {'url': endpoint + '?' + urllib.parse.urlencode(params), 'data': value}
-            args = ['OpenMeteoMatch.py', '--start-date', '2024-03-15', '--end-date', '2024-03-16', '--output-dir', str(output)]
+            args = ['OpenMeteoMatch.py', '--start-date', '2024-03-15', '--end-date', '2024-03-16', '--max-days', '1', '--output-dir', str(output)]
             with (patch.object(match, 'GRID', grid), patch.object(match, 'PREVIOUS_DATA', base / 'none'), patch.object(match, 'request', side_effect=fake_request), patch.object(sys, 'argv', args)):
-                with self.assertRaisesRegex(SystemExit, '2024-03-16'):
-                    match.main()
-            self.assertFalse(list((output / 'raw/era5-blocks').glob('*.json')))
-            self.assertFalse(list(output.glob('matched-*.csv')))
+                match.main()
+            self.assertTrue((output / 'matched-2024-03-15.csv').exists())
+            self.assertFalse((output / 'matched-2024-03-16.csv').exists())
 
     def test_reuses_saved_source_data_before_requesting_new_locations(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -151,7 +228,7 @@ class MatchingTests(unittest.TestCase):
             previous.mkdir(parents=True)
             for label in ('ifs', 'era5'):
                 params = 'models=ecmwf_ifs&run=2024-03-14T12%3A00' if label == 'ifs' else 'models=era5&start_date=2024-03-15&end_date=2024-03-15'
-                url = 'https://example.test/?latitude=52.5&longitude=1.0&hourly=wind_speed_100m%2Cshortwave_radiation&wind_speed_unit=ms&timezone=GMT&cell_selection=nearest&elevation=nan&' + params
+                url = (match.FORECAST if label == 'ifs' else match.ARCHIVE) + '?latitude=52.5&longitude=1.0&hourly=wind_speed_100m%2Cshortwave_radiation&wind_speed_unit=ms&timezone=GMT&cell_selection=nearest&elevation=nan&' + params
                 (previous / f'{label}-000.json').write_text(json.dumps({'url': url, 'data': payload(52.5, 1)}))
             args = ['OpenMeteoMatch.py', '--start-date', '2024-03-15', '--end-date', '2024-03-15', '--output-dir', str(base / 'out')]
             with (patch.object(match, 'GRID', grid), patch.object(match, 'PREVIOUS_DATA', base / 'previous'), patch.object(match, 'request') as request, patch.object(sys, 'argv', args)):
@@ -159,6 +236,54 @@ class MatchingTests(unittest.TestCase):
             request.assert_not_called()
             self.assertTrue((base / 'out/raw/2024-03-15/reused-wider-area/ifs-000.json').exists())
             self.assertTrue((base / 'out/matched-2024-03-15.csv').exists())
+
+    def test_short_reused_ifs_cache_is_refetched_and_original_preserved(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            grid = base / 'grid.csv'
+            grid.write_text('latitude,longitude,region\n52.5,1.0,onshore\n')
+            previous = base / 'previous' / '2024-03-15'
+            previous.mkdir(parents=True)
+            for label in ('ifs', 'era5'):
+                value = payload(52.5, 1)
+                if label == 'ifs':
+                    for key in value['hourly']:
+                        value['hourly'][key] = value['hourly'][key][:-1]
+                params = {'latitude':'52.5', 'longitude':'1.0', 'hourly':','.join(match.VARIABLES), 'wind_speed_unit':'ms', 'timezone':'GMT', 'cell_selection':'nearest', 'elevation':'nan'}
+                params.update({'models':'ecmwf_ifs', 'run':'2024-03-14T12:00', 'forecast_hours': 35} if label == 'ifs' else {'models':'era5', 'start_date':'2024-03-15', 'end_date':'2024-03-15'})
+                endpoint = match.FORECAST if label == 'ifs' else match.ARCHIVE
+                (previous / f'{label}-000.json').write_text(json.dumps({'url':endpoint + '?' + urllib.parse.urlencode(params), 'data':value}))
+            original = (previous / 'ifs-000.json').read_bytes()
+            def fake_request(endpoint, params):
+                self.assertEqual(endpoint, match.FORECAST)
+                return {'url': endpoint + '?' + urllib.parse.urlencode(params), 'data': payload(52.5, 1)}
+            output = base / 'out'
+            args = ['OpenMeteoMatch.py', '--start-date', '2024-03-15', '--end-date', '2024-03-15', '--output-dir', str(output)]
+            with (patch.object(match, 'GRID', grid), patch.object(match, 'PREVIOUS_DATA', base / 'previous'), patch.object(match, 'request', side_effect=fake_request) as fetch, patch.object(sys, 'argv', args)):
+                match.main()
+            self.assertEqual(fetch.call_count, 1)
+            self.assertEqual((previous / 'ifs-000.json').read_bytes(), original)
+            with (output / 'matched-2024-03-15.csv').open() as f:
+                self.assertTrue(all(row['ifs_wind_ms'] for row in csv.DictReader(f)))
+
+    def test_short_ifs_response_is_rejected_without_caching_or_output(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            grid = base / 'grid.csv'
+            grid.write_text('latitude,longitude,region\n52.5,1.0,onshore\n')
+            output = base / 'out'
+            def fake_request(endpoint, params):
+                value = payload(52.5, 1)
+                if endpoint == match.FORECAST:
+                    for key in value['hourly']:
+                        value['hourly'][key] = value['hourly'][key][:-1]
+                return {'url': endpoint + '?' + urllib.parse.urlencode(params), 'data': value}
+            args = ['OpenMeteoMatch.py', '--start-date', '2024-03-15', '--end-date', '2024-03-15', '--output-dir', str(output)]
+            with (patch.object(match, 'GRID', grid), patch.object(match, 'PREVIOUS_DATA', base / 'none'), patch.object(match, 'request', side_effect=fake_request), patch.object(sys, 'argv', args)):
+                with self.assertRaisesRegex(ValueError, 'required forecast hours'):
+                    match.main()
+            self.assertFalse(list(output.glob('matched-*.csv')))
+            self.assertFalse(list((output / 'raw/2024-03-15').glob('ifs-*.json')))
 
     def test_overlapping_download_is_rejected_before_any_request(self):
         with tempfile.TemporaryDirectory() as temp:

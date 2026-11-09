@@ -20,7 +20,7 @@ This project explores whether simple machine learning can improve **UK day-ahead
 
 The downloader matches **100 m wind speed** and **surface shortwave radiation** at hourly UTC timestamps. It uses the previous day's 12:00 UTC IFS run, with +12 to +35-hour forecast leads, and selects nearby grid cells separately for IFS and ERA5. The 0.5° sample grid contains 134 UK land and 431 offshore points within an approximate published UK maritime-area mask. It is a coarse sample, not every native model grid cell or a legal boundary.
 
-A daily macOS job was installed on this machine at 02:15 local time and processes up to five new days per run. It needs the Mac on, connected, and the user logged in. Its output is local and ignored by Git. Check progress with:
+A daily macOS job was installed on this machine at 02:15 local time and processes up to five days per run, including incomplete-day retries. It needs the Mac on, connected, and the user logged in. Its output is local and ignored by Git. Check progress with:
 
 ```bash
 tail -f data/open-meteo-uk-eez/scheduled-download.log
@@ -28,7 +28,7 @@ tail -f data/open-meteo-uk-eez/scheduled-download.log
 
 Press Ctrl+C to stop watching the log; the download continues. Errors are in `data/open-meteo-uk-eez/scheduled-download-error.log`. See [dataset and schedule instructions](docs/open-meteo-dataset.md) for the download, limits, stopping the schedule and provenance.
 
-**Review limitations:** the downloader can stop on an unavailable later ERA5 day even when earlier requested days are available; it can also retain incomplete attempted days without automatically refreshing missing values. Inspect completeness before using any saved file for training. The tests pass, but Docker Compose could not be checked on the current machine.
+**Data quality:** the downloader retries incomplete daily files and preserves older copies in an `incomplete/` folder. Missing or repeatedly unavailable values can still remain, so audit completeness and provenance before training. Docker Compose could not be checked on the current machine.
 
 ## Data and scientific background
 
