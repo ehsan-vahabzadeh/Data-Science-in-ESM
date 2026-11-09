@@ -4,7 +4,9 @@
 !docker/Dockerfile
 !docker/requirements.txt
 !docker/requirements.lock
-!UKWeather.py
+!OpenMeteoPilot.py
+!OpenMeteoMatch.py
+!config/
+!config/*.csv
 !UKDayAheadWeatherML.py
-!ECMWFForecastVerification.py
 !REPD_Publication_Q2_2026.csv

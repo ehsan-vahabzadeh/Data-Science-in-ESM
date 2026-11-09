@@ -19,9 +19,10 @@ WORKDIR /app
 COPY docker/requirements.txt docker/requirements.lock ./
 RUN --mount=type=cache,target=/root/.cache/pip \
     PIP_CACHE_DIR=/root/.cache/pip python -m pip install -r requirements.lock -r requirements.txt \
-    && python -m pip check \
-    && python -m cfgrib selfcheck
+    && python -m pip check
 
-COPY --chown=weather:weather UKWeather.py UKDayAheadWeatherML.py ECMWFForecastVerification.py REPD_Publication_Q2_2026.csv ./
+COPY --chown=weather:weather OpenMeteoPilot.py OpenMeteoMatch.py UKDayAheadWeatherML.py REPD_Publication_Q2_2026.csv ./
+
+COPY --chown=weather:weather config/ ./config/
 
 USER weather

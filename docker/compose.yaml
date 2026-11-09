@@ -1,66 +1,35 @@
 name: data-science-in-esm-weather
-
-x-weather: &weather
-  image: data-science-in-esm-weather:local
-  working_dir: /app
-  volumes:
-    - ../data:/app/data
-    - ../outputs:/app/outputs
-  init: true
-
 services:
-  era5:
-    <<: *weather
-    volumes:
-      - ../data:/app/data
-      - ../outputs:/app/outputs
-      - type: bind
-        source: ${HOME}/.cdsapirc
-        target: /home/weather/.cdsapirc
-        read_only: true
-        bind:
-          create_host_path: false
-    command:
-      - python
-      - UKWeather.py
-      - --cutout
-      - data/uk-era5-2025-01-02-to-2026-01-02.nc
-      - --output
-      - outputs/container/uk-weather-daily-mean-2026-01-01.png
-
-  ml:
-    <<: *weather
+  pilot:
+    image: data-science-in-esm-weather:local
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    command:
-      - python
-      - UKDayAheadWeatherML.py
-      - --cutout
-      - data/uk-era5-2025-01-02-to-2026-01-02.nc
-      - --output-dir
-      - outputs/container/day-ahead-weather
-
-  verify:
-    <<: *weather
+    working_dir: /app
     volumes:
       - ../data:/app/data
       - ../outputs:/app/outputs
-      - type: bind
-        source: ${HOME}/.cdsapirc
-        target: /home/weather/.cdsapirc
-        read_only: true
-        bind:
-          create_host_path: false
-    command:
-      - python
-      - ECMWFForecastVerification.py
-      - --valid-day
-      - ${VERIFY_VALID_DAY:-today}
-      - --reference-dir
-      - data
-      - --download-era5
-      - --forecast-dir
-      - data/ecmwf
-      - --output-dir
-      - outputs/container/ecmwf-verification
+    init: true
+    command: ["python", "OpenMeteoPilot.py"]
+  match:
+    image: data-science-in-esm-weather:local
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    working_dir: /app
+    volumes:
+      - ../data:/app/data
+      - ../outputs:/app/outputs
+    init: true
+    command: ["python", "OpenMeteoMatch.py"]
+  ml:
+    image: data-science-in-esm-weather:local
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    working_dir: /app
+    volumes:
+      - ../data:/app/data
+      - ../outputs:/app/outputs
+    init: true
+    command: ["python", "UKDayAheadWeatherML.py", "--cutout", "data/uk-era5-2025-01-02-to-2026-01-02.nc", "--output-dir", "outputs/container/day-ahead-weather"]

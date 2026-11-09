@@ -2,7 +2,10 @@
 /data/
 /outputs/
 __pycache__/
+.venv/
 .vscode/
 .cdsapirc
+.ecmwfapirc
 .env
 .env.*
+/config/org.data-science-in-esm.openmeteo.plist

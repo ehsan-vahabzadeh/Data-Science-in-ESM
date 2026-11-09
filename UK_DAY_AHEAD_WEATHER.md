@@ -1,3 +1,7 @@
+# Legacy experiment — not the Open-Meteo IFS-to-ERA5 correction model
+
+This older script requires an existing atlite-format ERA5 cutout. It does not accept Open-Meteo data or train on IFS forecast errors.
+
 # UK farm-level day-ahead weather forecasting
 
 ## What this experiment predicts
@@ -80,16 +84,7 @@ easy all-zero night hours do not inflate apparent performance.
 
 ## Run the experiment
 
-First, `UKWeather.py` is configured to retrieve the continuous hourly period
-from 2 January 2025 through 2 January 2026. The final midnight is required for
-the last solar accumulation interval.
-
-```bash
-python UKWeather.py
-```
-
-This needs valid CDS credentials and accepted ERA5 licence terms. A year for
-the full UK grid is a substantial download and can take time.
+Provide an existing compatible annual atlite-format ERA5 cutout. The repository no longer supplies a direct ERA5 downloader. Open-Meteo pilot data is not yet compatible with this script.
 
 Then run the backtest:
 

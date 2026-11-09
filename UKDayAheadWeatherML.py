@@ -1,6 +1,7 @@
 """Learn day-ahead wind and solar forecasting with an ERA5 backtest.
 
-This is an educational *historical* experiment.  ERA5 is a reanalysis: it is
+LEGACY: This is an educational *historical* experiment, not the planned
+Open-Meteo IFS-to-ERA5 error-correction model.  ERA5 is a reanalysis: it is
 used here as both the historical input and the truth against which predictions
 are checked.  It is not tomorrow's live weather forecast.
 
@@ -113,8 +114,8 @@ def open_cutout(path: Path) -> xr.Dataset:
     if not path.exists():
         raise SystemExit(
             f"Cutout not found: {path}\n"
-            "Run UKWeather.py after configuring CDS access to download the "
-            "one-year cutout, then run this script again."
+            "This legacy experiment needs an existing atlite-format ERA5 cutout. "
+            "It does not yet accept Open-Meteo data."
         )
 
     dataset = xr.open_dataset(path)
