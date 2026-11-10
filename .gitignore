@@ -8,4 +8,3 @@ __pycache__/
 .ecmwfapirc
 .env
 .env.*
-/config/org.data-science-in-esm.openmeteo.plist

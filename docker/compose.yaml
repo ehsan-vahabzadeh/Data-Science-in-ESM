@@ -1,7 +1,6 @@
-name: data-science-in-esm-weather
+name: weather-forecast
 services:
-  pilot:
-    image: data-science-in-esm-weather:local
+  python:
     build:
       context: ..
       dockerfile: docker/Dockerfile
@@ -9,27 +8,4 @@ services:
     volumes:
       - ../data:/app/data
       - ../outputs:/app/outputs
-    init: true
-    command: ["python", "OpenMeteoPilot.py"]
-  match:
-    image: data-science-in-esm-weather:local
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    working_dir: /app
-    volumes:
-      - ../data:/app/data
-      - ../outputs:/app/outputs
-    init: true
-    command: ["python", "OpenMeteoMatch.py"]
-  ml:
-    image: data-science-in-esm-weather:local
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    working_dir: /app
-    volumes:
-      - ../data:/app/data
-      - ../outputs:/app/outputs
-    init: true
-    command: ["python", "UKDayAheadWeatherML.py", "--cutout", "data/uk-era5-2025-01-02-to-2026-01-02.nc", "--output-dir", "outputs/container/day-ahead-weather"]
+    command: ["python", "--version"]

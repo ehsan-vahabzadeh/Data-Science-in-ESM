@@ -4,7 +4,7 @@
 
 ### Issue tracker
 
-Track work in GitHub Issues for ehsan-vahabzadeh/Data-Science-in-ESM. See `docs/agents/issue-tracker.md`.
+Track work in GitHub Issues for ehsan-vahabzadeh/weather-forecast. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

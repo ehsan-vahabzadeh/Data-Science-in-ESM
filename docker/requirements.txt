@@ -1,9 +1,0 @@
-# Open-Meteo pilot uses the standard library; these support the legacy ML experiment.
-cartopy>=0.26,<0.27
-matplotlib>=3.9,<4
-netCDF4>=1.7,<2
-numpy>=1.26,<3
-pandas>=2.2,<3
-pyproj>=3.6,<4
-scikit-learn>=1.5,<2
-xarray>=2025.1,<2027

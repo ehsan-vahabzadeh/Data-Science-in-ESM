@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Issues and specs live in GitHub Issues for `ehsan-vahabzadeh/Data-Science-in-ESM`.
+Issues and specs live in GitHub Issues for `ehsan-vahabzadeh/weather-forecast`.
 Use the authenticated `gh` CLI from this repository.
 
 ## Conventions
