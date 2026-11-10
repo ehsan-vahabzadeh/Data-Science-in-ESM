@@ -1,0 +1,27 @@
+# Checking weather forecast data
+
+Research checked 10 November 2026. This note explains useful checks; it does not claim that the project's files have passed them. The project compares ECMWF TIGGE forecasts with ERA5 reanalysis, not direct observations.
+
+## Before analysing patterns
+
+1. **Keep a traceable inventory.** Record file checksums, source, retrieval date, units, forecast type, run initialization, lead time, valid time, grid and version. For every parameter, check expected dates, leads and points against what was actually delivered. A successful download does not guarantee every expected field is present. ECMWF maintains [TIGGE data-issue notices](https://confluence.ecmwf.int/spaces/TIGGE/pages/192923433/Issues%2Bwith%2Bdata); its older missing-field example concerns 2006–2019 and should not be presumed to affect our 2024–2026 files.
+2. **Check each field, not only each file.** Identify missing or non-finite values, missing grid points, duplicate forecast keys, inconsistent coordinates and unexpected GRIB metadata. Check `valid time = initialization + lead`, and distinguish a forecast initialization date from the date it predicts. Inspect extremes and suspicious constant fields; flag them for investigation rather than discarding true storms or darkness.
+3. **Check physical meaning and matching.** Components of wind can be negative; calculated wind speed cannot. Check cloud cover against its encoded units and range and solar fields against their accumulation metadata. ERA5 hourly accumulated quantities cover the hour ending at the valid time; other products can use different accumulation conventions. Convert both sources to the same time intervals before comparing. See [ECMWF's accumulation guidance](https://confluence.ecmwf.int/plugins/viewsource/viewpagesrc.action?pageId=197702797).
+4. **Identify spatial representation.** Confirm latitude/longitude convention, output spacing and grid-to-grid matching. Interpolation changes values; matching locations does not make the underlying products independent or equally representative near coasts. A regular output grid may itself be interpolated from the archived model grid. See [ECMWF on ERA5 grids](https://confluence.ecmwf.int/pages/viewpage.action?pageId=78296363).
+
+## Explore before fitting models
+
+- Summarise sample counts, missingness, minimum, median, upper percentiles and maximum by variable, date, lead and location. Plot distributions, seasonal/time-of-day patterns, land/sea groups and maps. Examine rare values before deciding whether they are errors.
+- On matched samples, inspect forecast versus ERA5 scatterplots and errors by location, lead, month, wind regime and daylight. Report signed bias, MAE and RMSE together; percentage errors require a stated near-zero rule and retained sample count. WMO's verification guidance specifies mean wind-speed error and RMS vector wind error, alongside other common scores. [WMO lead centre](https://confluence.ecmwf.int/display/WLD/Score%2Bdefinitions%2Band%2Brequirements).
+- Keep grid cell/time counts distinct from independent weather events: nearby cells and hours are correlated. When aggregating large latitude–longitude areas, document whether values are grid-point-weighted or area-weighted.
+- Do not call ERA5 the exact truth. ECMWF notes that verification against model analyses and point observations can yield different results because of reference and representativeness errors. [ECMWF representativeness study](https://www.ecmwf.int/sites/default/files/elibrary/2020/81173-accounting-representativeness-verification-ensemble-forecasts.pdf).
+
+## Does clustering help?
+
+Clustering can be a useful **exploratory** tool: group similar forecast conditions, such as high-wind/cloudy versus lower-wind/clear conditions, and inspect sample counts and forecast errors in each group. ECMWF uses clustering for specific large-scale weather-regime and ensemble applications, but those regimes use broader atmospheric patterns and cannot be identified just by applying k-means to our surface variables. [ECMWF ensemble clustering](https://www.ecmwf.int/en/forecasts/documentation-and-support/ens-cluster-products).
+
+Clustering is not a data-cleaning test: membership in a small cluster does not prove a value is wrong, and clusters do not establish causal relationships or model skill. Results depend on the chosen variables, scaling, algorithm, number of clusters and spatial/temporal sampling. Compare stability across settings and seasons, and describe which rows and locations are represented. If cluster membership is later used as a model input or to choose a correction, fit scaling and clusters on the training period only, apply the fitted transform to later data, and assess on held-out dates. Same-valid-time ERA5 and future errors cannot be inputs to an operational prediction. [scikit-learn leakage guidance](https://scikit-learn.org/stable/common_pitfalls).
+
+## Project-specific priority
+
+Audit the two TIGGE files first, then the existing two-day ERA5 sample and matching logic. Those two days support a small workflow check, not seasonal clustering or a defensible generalisation assessment. Obtain enough ERA5 coverage, preserve a chronologically held-out period, then repeat the paired analysis by lead, season and land/sea before deciding whether clustering adds insight. Respect actual reference and forecast release times in any simulated operational use.

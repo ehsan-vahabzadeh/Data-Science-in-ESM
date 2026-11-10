@@ -2,6 +2,8 @@
 
 This project explores whether simple machine learning can improve **UK wind and solar weather forecasts**. The current experiment uses ECMWF IFS forecasts from TIGGE and plans to compare them with ERA5 as a historical reference. The long-term aim is to connect weather forecasts to renewable generation and, later, electricity-market questions.
 
+New to the project or returning after a break? Read [LEARNING.md](LEARNING.md) for the science, data, decisions and current results.
+
 ## Project targets
 
 🟢 **Done** · 🟡 **Under way** · ⚪ **Planned**
@@ -9,7 +11,7 @@ This project explores whether simple machine learning can improve **UK wind and 
 | Status | Target by the end of the project | Current position |
 | --- | --- | --- |
 | 🟡 | Establish a repeatable way to access and match IFS and ERA5 data | TIGGE forecast files were downloaded; the TIGGE-to-ERA5 matching workflow has not yet been implemented or verified. |
-| 🟡 | Build and audit a multi-year UK land and offshore wind/solar dataset | Two one-year TIGGE files were downloaded and checksum-verified; their contents and the matching ERA5 reference are not yet audited. |
+| 🟡 | Build and audit a multi-year UK land and offshore wind/solar dataset | Two TIGGE years passed initial completeness checks with small physical-range anomalies flagged; only two ERA5 days are available. |
 | ⚪ | Train separate, understandable wind and solar correction models | Planned: compare uncorrected IFS, a mean-bias correction, then linear or Ridge models. No correction model has been trained. |
 | ⚪ | Test whether more complex models improve on the simple models | Planned: compare random forests or gradient-boosted trees using the same inputs and time splits. |
 | ⚪ | Verify performance and generalisation | Planned: chronological train/validation/test splits, seasonal and lead-time results, and separate onshore/offshore evaluation. |
@@ -20,7 +22,7 @@ This project explores whether simple machine learning can improve **UK wind and 
 
 **TIGGE is the chosen source for the next experiment.** We requested two years of ECMWF ensemble control forecasts over a UK and surrounding-seas bounding box on a 0.5° grid, for the 12 UTC run at +12, +18, +24 and +30 hours. The requested fields are 10 m wind components, 2 m temperature, total cloud cover and surface net solar radiation. These six-hourly samples do not cover every hour, and the rectangle includes non-UK areas. They are not the former 100 m wind and downward solar design.
 
-Both one-year requests completed and the GRIB files were downloaded under `data/tigge/` with matching checksums. Their fields, timestamps and completeness have not yet been audited. ERA5 must still be acquired and matched. See the [data-access history and current request](docs/data-access-history.md) for details and next checks.
+Both one-year requests completed and the GRIB files were downloaded under `data/tigge/` with matching checksums. An initial audit found all requested fields and no missing values; tiny cloud-cover overshoots and negative solar increments need investigation. The ERA5 reference currently covers only 2–3 March 2024. See [LEARNING.md](LEARNING.md) for findings and next checks.
 
 ## Data and scientific background
 
@@ -35,6 +37,8 @@ Both one-year requests completed and the GRIB files were downloaded under `data/
 
 Plan separate wind and solar models that predict `ERA5 − IFS`, then add the predicted correction to the forecast. Start with forecast wind, net solar radiation, cloud cover and temperature where available, plus lead time, cyclic time and location; a land/sea indicator still needs to be obtained and aligned. Wind speed is derived from the 10 m components. Establish a compatible solar target before modelling: net solar radiation is not the same as downward solar irradiance. Fit all preprocessing on the training period only. Same-valid-time ERA5 is the **target**, never a predictor.
 
+A first mean-bias demonstration fits one wind offset and one solar offset on 2 March 2024 and evaluates on 3 March. On the 519 UK-grid points available within the downloaded rectangle, adjusted MAE was worse than the raw forecast for both variables. This is a retrospective two-day plumbing check, not a reliable estimate of model skill: ERA5 for the training day was not available by the following forecast initialization. The result and reproducible command are recorded in [the data-access history](docs/data-access-history.md#two-day-bias-adjustment-demonstration).
+
 Compare MAE, RMSE and signed bias against the raw forecast. For solar report both daylight and all-hour scores. Test later dates and seasons without leaking future information; improving agreement with ERA5 alone does not establish improved real-world skill. The existing [forecast postprocessing research](docs/forecast-postprocessing-models.md) explains model options and published examples.
 
 ## Run and test
@@ -48,6 +52,8 @@ An initial two-day comparison on 2–3 March 2024 produced maps under `outputs/t
 | File | Purpose |
 | --- | --- |
 | [docs/data-access-history.md](docs/data-access-history.md) | Data-source decisions, TIGGE requests, access setup and outstanding checks. |
+| [docs/weather-data-quality-research.md](docs/weather-data-quality-research.md) | Data quality, exploratory analysis and clustering research. |
+| [docs/weather-forecast-bias-adjustment.md](docs/weather-forecast-bias-adjustment.md) | Weather forecast bias correction methods and evaluation. |
 | [docs/forecast-reference-matching.md](docs/forecast-reference-matching.md) | Forecast/reference matching research. |
 | [docs/forecast-correction-examples.md](docs/forecast-correction-examples.md) | Research examples of forecast correction. |
 | [REPD_Publication_Q2_2026.csv](REPD_Publication_Q2_2026.csv) | UK renewable farm locations and capacities. |

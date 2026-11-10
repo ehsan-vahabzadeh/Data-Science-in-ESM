@@ -1,7 +1,7 @@
 # Domain docs
 
-Read `PROJECT_GUIDE.md` before exploring the weather workflows. It records
-the project's purpose, data, model choices, results, and limits.
+Read `LEARNING.md` before exploring the weather workflows. It records the
+project's purpose, data, model choices, results, and limits.
 
 This is a single-context repository. If `GLOSSARY.md` exists at the root,
 use its terms consistently. Read relevant decisions in `docs/adr/` before

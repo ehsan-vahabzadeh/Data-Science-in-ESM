@@ -45,3 +45,20 @@ Pressure, precipitation, dew point and land/sea mask are candidates listed in TI
 - Inspect the sample and resulting GRIB files for field names, units, actual runs, leads, grid, missing records and coverage; acceptance of a request does not prove complete data delivery. Check ECDS request logs and failures if needed.
 - Obtain matching ERA5 reference variables, dates and spatial coverage through a suitable source. Align grid locations and solar accumulation intervals, and record provenance. A TIGGE-to-ERA5 pipeline has not yet been implemented.
 - Split by time before fitting transformations, keep the final test period unseen and compare raw forecasts, a mean-bias baseline and a simple linear or Ridge model. Any new weather predictor must be available from the forecast at the decision time, not from same-valid-time ERA5.
+
+## Two-day bias-adjustment demonstration
+
+On 10 November 2026, we fitted a single offset per variable as mean `ERA5 − TIGGE` on 2 March 2024, then applied it to the 3 March forecasts, clipping negative corrected values to zero. Each day uses the preceding 12 UTC run at +18, +24 and +30 hours. Net solar is converted to matching six-hour mean W/m²; wind is 10 m speed. The evaluation uses 519 points from the approximate UK land/maritime grid that overlap the downloaded rectangle (1,557 point-times), equally weighted. The reference is ERA5, not independent measurements.
+
+| Variable | Training offset | Evaluation raw MAE | Evaluation adjusted MAE |
+| --- | ---: | ---: | ---: |
+| Wind speed | +0.204 m/s | 0.857 m/s | 0.887 m/s |
+| Net solar radiation | +4.040 W/m² | 16.054 W/m² | 17.597 W/m² |
+
+This is a retrospective plumbing check, not an operational backtest: ERA5 for the training day was not available when the evaluation forecast was initialized. A single day is not enough to estimate stable seasonal, location, time-of-day or lead-specific biases, and the positive solar offset can create nonphysical radiation during darkness. The evaluation day has already been inspected and must not serve as a final held-out test. Before drawing conclusions, retrieve more ERA5 data, respect its actual publication latency, reserve later test dates and assess daylight/nighttime, regions, leads and seasons against the uncorrected forecast.
+
+With the downloaded GRIB files and `numpy` and `eccodes` installed, reproduce the example from the repository root:
+
+```bash
+python -m scripts.bias_adjustment --forecast data/tigge/2024-03-01_to_2025-02-28.grib --era5 data/era5/uk-2024-03-02-03.grib --train-date 2024-03-02 --output outputs/bias-adjustment/two-day-example.json
+```
